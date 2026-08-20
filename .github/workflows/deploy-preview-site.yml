@@ -91,6 +91,7 @@ jobs:
           # previews are being served at the default `pages-base-url`
           # if a cname is added, then the value of said custom domain must be given to `pages-base-url`
           umbrella-dir: preview-badges
+          target-branch: site
           qr-code: false
           comment: false
           action: ${{ needs.read-metadata.outputs.action == 'closed' && 'remove' || 'deploy' }}
@@ -115,24 +116,24 @@ jobs:
       removed_prs: ${{ steps.prune-previews.outputs.removed_prs }}
       removed_prs_json: ${{ steps.prune-previews.outputs.removed_prs_json }}
     steps:
-      - name: Checkout gh-pages for preview retention
+      - name: Checkout site for preview retention
         uses: actions/checkout@v6
         with:
-          ref: gh-pages
+          ref: site
           fetch-depth: 0
           sparse-checkout: |
             preview-badges
-          path: gh-pages-maintenance
+          path: site-maintenance
 
       - name: Prune old PR previews
         id: prune-previews
-        # Pruning is best-effort housekeeping on the shared gh-pages branch.
-        # Many docs preview runs write to gh-pages at once, so it must never be
+        # Pruning is best-effort housekeeping on the shared site branch.
+        # Many docs preview runs write to site at once, so it must never be
         # the reason a preview is reported as failed: the push is retried against
         # the freshest state, and the step is continue-on-error as a backstop.
         continue-on-error: true
         run: |
-          cd gh-pages-maintenance
+          cd site-maintenance
           git config user.name "github-actions[bot]"
           git config user.email "github-actions[bot]@users.noreply.github.com"
 
@@ -144,7 +145,7 @@ jobs:
             echo "removed_prs_json=[]"
           } >> "$GITHUB_OUTPUT"
 
-          # A naive push to the shared gh-pages branch loses the race with other
+          # A naive push to the shared site branch loses the race with other
           # concurrent preview runs ("! [rejected] (fetch first)"). Re-derive the
           # prune from the freshest remote state on every attempt and retry with
           # backoff so a lost race self-heals instead of failing the workflow.
@@ -153,7 +154,7 @@ jobs:
           attempts=5
 
           for attempt in $(seq 1 "$attempts"); do
-            git fetch --quiet origin gh-pages
+            git fetch --quiet origin site
             git reset --quiet --hard FETCH_HEAD
             mkdir -p preview-badges
 
@@ -183,17 +184,17 @@ jobs:
             git add preview-badges
             git commit --quiet -m "Prune old PR previews"
 
-            if git push origin HEAD:gh-pages; then
+            if git push origin HEAD:site; then
               outcome="pushed"
               break
             fi
 
-            echo "Prune push lost the race (attempt ${attempt}/${attempts}); re-syncing gh-pages and retrying..."
+            echo "Prune push lost the race (attempt ${attempt}/${attempts}); re-syncing site and retrying..."
             sleep "$(( attempt * 5 + RANDOM % 5 ))"
           done
 
           if [ -z "$outcome" ]; then
-            echo "::warning::Could not prune old PR previews after ${attempts} attempts due to concurrent gh-pages updates; a later run will retry. Not failing the preview."
+            echo "::warning::Could not prune old PR previews after ${attempts} attempts due to concurrent site updates; a later run will retry. Not failing the preview."
             removed_prs=()
           fi
 
